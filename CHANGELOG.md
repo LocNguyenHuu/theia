@@ -1,15 +1,19 @@
 # Change Log
 
 ## v0.5.0
+
+- [cpp] added new clang-tidy and clang-tidy-checks preferences to lint cpp program when clangd v9+ is used.
 - [plugin] `workspace.openTextDocument` API now respects the contributed `FileSystemProviders`
 
 Breaking changes:
+
 - [editor] computation of resource context keys moved to core [#4531](https://github.com/theia-ide/theia/pull/4531)
 - [plugin] support multiple windows per a backend [#4509](https://github.com/theia-ide/theia/issues/4509)
   - Some plugin bindings are scoped per a connection now. Clients, who contribute/rebind these bindings, will need to scope them per a connection as well.
 - [quick-open] disable separate fuzzy matching by default [#4549](https://github.com/theia-ide/theia/pull/4549)
 
 ## v0.4.0
+
 - [application-manager] added support for pre-load HTML templates
 - [console] added support for console `when` contexts
 - [core] added support for os `when` contexts
@@ -86,6 +90,7 @@ Breaking changes:
 
 
 Breaking changes:
+
 - menus aligned with built-in VS Code menus [#4173](https://github.com/theia-ide/theia/pull/4173)
   - navigator context menu group changes:
     - `1_open` and `4_new` replaced by `navigation` group
@@ -123,6 +128,7 @@ Breaking changes:
 
 
 ## v0.3.19
+
 - [core] added `hostname` alias
 - [core] added new `editor.formatOnSave` preference, to format documents on manual save
 - [core] added support for setting end of line character
@@ -164,6 +170,7 @@ Breaking changes:
 
 
 ## v0.3.18
+
 - [core] added a preference to define how to handle application exit
 - [core] added a way to prevent application exit from extensions
 - [core] added functionality to prevent application exit if some editors are dirty
@@ -203,6 +210,7 @@ Breaking changes:
 
 
 ## v0.3.17
+
 - Added better widget error handling for different use cases (ex: no workspace present, no repository present, ...)
 - Addressed multiple backend memory leaks
 - Prefixed quick-open commands for easier categorization and searching
@@ -241,6 +249,7 @@ Breaking changes:
 
 
 ## v0.3.16
+
 - Reverted [cpp] Add debugging for C/C++ programs. This feature will come back in its own cpp-specific repo
 - [callhierarchy][typescript] adapt to hierarchical document symbols
 - [core] added methods to un-register menus, commands and keybindings
@@ -254,6 +263,7 @@ Breaking changes:
 
 
 ## v0.3.15
+
 - [cpp] added debugging for C/C++ programs
 - [debug] added debug toolbar
 - [debug] resolved variables in configurations
@@ -265,6 +275,7 @@ Breaking changes:
 
 
 ## v0.3.13
+
 - Re-implemented additional widgets using React
 - Re-implemented miscellaneous components using React
 - [cpp] added a status bar button to select an active cpp build configuration
@@ -280,6 +291,7 @@ Breaking changes:
 
 
 ## v0.3.12
+
 - New Plugin system !
     - See [design](https://github.com/theia-ide/theia/issues/1482) and [documentation](https://github.com/theia-ide/theia/blob/master/packages/plugin/API.md) for more details.
 - Introducing [Task API](https://github.com/theia-ide/theia/pull/2086).
@@ -299,6 +311,7 @@ Breaking changes:
 - `HTML` files now open in the editor by default
 
 ## v0.3.11
+
 - Added search and replace widget
 - Added the ability to delete files on OSX with cmd+backspace
 - Added the ability to set more finely grained logger levels

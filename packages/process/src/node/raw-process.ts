@@ -20,6 +20,7 @@ import { ILogger } from '@theia/core/lib/common';
 import { Process, ProcessType, ProcessOptions, ForkOptions } from './process';
 import { ChildProcess, spawn, fork } from 'child_process';
 import * as stream from 'stream';
+import { DevNullStream } from './dev-null-stream';
 
 export const RawProcessOptions = Symbol('RawProcessOptions');
 
@@ -50,30 +51,29 @@ export interface RawProcessFactory {
     (options: RawProcessOptions | RawForkOptions): RawProcess;
 }
 
-/**
- * A Node stream like `/dev/null`.
- *
- * Writing goes to a black hole, reading returns `EOF`.
- */
-class DevNullStream extends stream.Duplex {
-    // tslint:disable-next-line:no-any
-    _write(chunk: any, encoding: string, callback: (err?: Error) => void): void {
-        callback();
-    }
-
-    _read(size: number): void {
-        // tslint:disable-next-line:no-null-keyword
-        this.push(null);
-    }
-}
-
 @injectable()
 export class RawProcess extends Process {
 
-    readonly input: stream.Writable;
-    readonly output: stream.Readable;
-    readonly errorOutput: stream.Readable;
+    /**
+     * @deprecated use `inputStream` instead.
+     */
+    get input(): stream.Writable { return this.inputStream; }
+
+    /**
+     * @deprecated use `outputStream` instead.
+     */
+    get output(): stream.Readable { return this.outputStream; }
+
+    /**
+     * @deprecated use `errorStream` instead.
+     */
+    get errorOutput(): stream.Readable { return this.errorStream; }
+
     readonly process: ChildProcess;
+
+    readonly outputStream: stream.Readable;
+    readonly errorStream: stream.Readable;
+    readonly inputStream: stream.Writable;
 
     constructor(
         @inject(RawProcessOptions) options: RawProcessOptions | RawForkOptions,
@@ -119,9 +119,9 @@ export class RawProcess extends Process {
                 );
             });
 
-            this.output = this.process.stdout;
-            this.input = this.process.stdin;
-            this.errorOutput = this.process.stderr;
+            this.outputStream = this.process.stdout;
+            this.inputStream = this.process.stdin;
+            this.errorStream = this.process.stderr;
 
             if (this.process.pid !== undefined) {
                 process.nextTick(() => {
@@ -131,9 +131,9 @@ export class RawProcess extends Process {
         } catch (error) {
             /* When an error is thrown, set up some fake streams, so the client
                code doesn't break because these field are undefined.  */
-            this.output = new DevNullStream();
-            this.input = new DevNullStream();
-            this.errorOutput = new DevNullStream();
+            this.outputStream = new DevNullStream();
+            this.inputStream = new DevNullStream();
+            this.errorStream = new DevNullStream();
 
             /* Call the client error handler, but first give them a chance to register it.  */
             process.nextTick(() => {

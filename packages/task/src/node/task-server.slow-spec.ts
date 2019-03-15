@@ -62,7 +62,10 @@ describe('Task server / back-end', function () {
         server = await testContainer.get(BackendApplication).start();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+        const tasks = await taskServer.getTasks();
+        await Promise.all(tasks.map(task => taskServer.kill(task.taskId)));
+
         taskServer = undefined!;
         taskWatcher = undefined!;
         const s = server;
@@ -76,11 +79,12 @@ describe('Task server / back-end', function () {
         // This test is flaky on Windows and fails intermittently. Disable it for now
         if (isWindows) {
             this.skip();
+            return;
         }
 
         // create task using terminal process
         const command = isWindows ? commandShortrunningindows : commandShortRunning;
-        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('shell', FileUri.fsPath(command), [someString]), wsRoot);
+        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('shell', `${FileUri.fsPath(command)} ${someString}`, []), wsRoot);
         const terminalId = taskInfo.terminalId;
 
         // hook-up to terminal's ws and confirm that it outputs expected tasks' output
@@ -220,8 +224,7 @@ describe('Task server / back-end', function () {
         }
     });
 
-    it('task using raw process can be killed', async function () {
-        // const command = isWindows ? command_absolute_path_long_running_windows : command_absolute_path_long_running;
+    it('task using type "process" can be killed', async function () {
         const taskInfo: TaskInfo = await taskServer.run(createTaskConfigTaskLongRunning('process'), wsRoot);
 
         const p = new Promise<string>((resolve, reject) => {
@@ -236,13 +239,48 @@ describe('Task server / back-end', function () {
             taskServer.kill(taskInfo.taskId);
         });
 
-        const signal = await p;
-        expect(signal).equals('SIGTERM');
+        // node-pty reports different things on Linux/macOS vs Windows when
+        // killing a process.  This is not ideal, but that's how things are
+        // currently.  Ideally, its behavior should be aligned as much as
+        // possible on what node's child_process module does.
+        const signalOrCode = await p;
+        if (isWindows) {
+            // On Windows, node-pty just reports an exit code of 0.
+            expect(signalOrCode).equals(0);
+        } else {
+            // On Linux/macOS, node-pty sends SIGHUP by default, for some reason.
+            expect(signalOrCode).equals('SIGHUP');
+        }
     });
 
+    /**
+     * TODO: Figure out how to debug a process that correctly starts but exits with a return code > 0
+     */
     it('task using terminal process can handle command that does not exist', async function () {
-        const p = taskServer.run(createProcessTaskConfig2('shell', bogusCommand, []), wsRoot);
-        await expectThrowsAsync(p, 'ENOENT');
+        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig2('shell', bogusCommand, []), wsRoot);
+
+        const p = new Promise<number>((resolve, reject) => {
+            taskWatcher.onTaskExit((event: TaskExitedEvent) => {
+                if (event.taskId !== taskInfo.taskId || event.code === undefined || event.signal !== undefined) {
+                    reject(new Error(JSON.stringify(event)));
+                }
+
+                resolve(event.code);
+            });
+
+            taskServer.kill(taskInfo.taskId);
+        });
+
+        // node-pty reports different things on Linux/macOS vs Windows when
+        // killing a process.  This is not ideal, but that's how things are
+        // currently.  Ideally, its behavior should be aligned as much as
+        // possible on what node's child_process module does.
+        const code = await p;
+        if (isWindows) {
+            expect(code).equals(0);
+        } else {
+            expect(code).equals(127);
+        }
     });
 
     it('task using raw process can handle command that does not exist', async function () {

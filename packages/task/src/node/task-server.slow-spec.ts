@@ -26,6 +26,7 @@ import { terminalsPath } from '@theia/terminal/lib/common/terminal-protocol';
 import { expectThrowsAsync } from '@theia/core/lib/common/test/expect';
 import { TestWebSocketChannel } from '@theia/core/lib/node/messaging/test/test-web-socket-channel';
 import { expect } from 'chai';
+import URI from '@theia/core/lib/common/uri';
 
 /**
  * Globals
@@ -33,19 +34,20 @@ import { expect } from 'chai';
 
 // test scripts that we bundle with tasks
 const commandShortRunning = './task';
-const commandShortrunningindows = 'task.bat';
+const commandShortrunningindows = '.\\task.bat';
 
 const commandLongRunning = './task-long-running';
-const commandLongRunningWindows = 'task-long-running.bat';
+const commandLongRunningWindows = '.\\task-long-running.bat';
 
 const bogusCommand = 'thisisnotavalidcommand';
 
-const commandToFindInPathUnix = 'ls';
-const commandToFindInPathWindows = 'dir';
+const commandUnixNoop = 'true';
+const commandWindowsNoop = 'rundll32.exe';
 
 // we use test-resources subfolder ('<theia>/packages/task/test-resources/'),
 // as workspace root, for these tests
-const wsRoot: string = FileUri.fsPath(FileUri.create(__dirname).resolve('../../test-resources'));
+const wsRootUri: URI = FileUri.create(__dirname).resolve('../../test-resources');
+const wsRoot: string = FileUri.fsPath(wsRootUri);
 
 describe('Task server / back-end', function () {
     this.timeout(10000);
@@ -58,14 +60,11 @@ describe('Task server / back-end', function () {
         const testContainer = createTaskTestContainer();
         taskWatcher = testContainer.get(TaskWatcher);
         taskServer = testContainer.get(TaskServer);
-        taskServer!.setClient(taskWatcher.getTaskClient());
+        taskServer.setClient(taskWatcher.getTaskClient());
         server = await testContainer.get(BackendApplication).start();
     });
 
     afterEach(async () => {
-        const tasks = await taskServer.getTasks();
-        await Promise.all(tasks.map(task => taskServer.kill(task.taskId)));
-
         taskServer = undefined!;
         taskWatcher = undefined!;
         const s = server;
@@ -98,7 +97,7 @@ describe('Task server / back-end', function () {
                 if (msg.toString().indexOf(expected) !== -1) {
                     resolve();
                 } else {
-                    reject(`expected sub-string not found in terminal output. Expected: "${expected}" vs Actual: "${msg.toString()}"`);
+                    reject(new Error(`expected sub-string not found in terminal output. Expected: "${expected}" vs Actual: "${msg.toString()}"`));
                 }
                 channel.close();
             });
@@ -108,9 +107,10 @@ describe('Task server / back-end', function () {
     it('task using raw process - task server success response shall not contain a terminal id', async function () {
         const someString = 'someSingleWordString';
         const command = isWindows ? commandShortrunningindows : commandShortRunning;
+        const executable = FileUri.fsPath(wsRootUri.resolve(command));
 
         // create task using raw process
-        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', FileUri.fsPath(command), [someString]), wsRoot);
+        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', executable, [someString]), wsRoot);
 
         const p = new Promise((resolve, reject) => {
             const toDispose = taskWatcher.onTaskExit((event: TaskExitedEvent) => {
@@ -118,7 +118,7 @@ describe('Task server / back-end', function () {
                     if (taskInfo.terminalId === undefined) {
                         resolve();
                     } else {
-                        reject(`terminal id was expected to be undefined, actual: ${taskInfo.terminalId}`);
+                        reject(new Error(`terminal id was expected to be undefined, actual: ${taskInfo.terminalId}`));
                     }
                     toDispose.dispose();
                 }
@@ -149,7 +149,8 @@ describe('Task server / back-end', function () {
 
     it('task is executed successfully using raw process', async function () {
         const command = isWindows ? commandShortrunningindows : commandShortRunning;
-        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', FileUri.fsPath(command), []));
+        const executable = FileUri.fsPath(wsRootUri.resolve(command));
+        const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', executable, []));
 
         const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
 
@@ -157,7 +158,7 @@ describe('Task server / back-end', function () {
     });
 
     it('task without a specific runner is executed successfully using as a process', async function () {
-        const command = isWindows ? commandToFindInPathWindows : commandToFindInPathUnix;
+        const command = isWindows ? commandWindowsNoop : commandUnixNoop;
 
         // there's no runner registered for the 'npm' task type
         const taskConfig: TaskConfiguration = createTaskConfig('npm', command, []);
@@ -169,7 +170,7 @@ describe('Task server / back-end', function () {
     });
 
     it('task can successfully execute command found in system path using a terminal process', async function () {
-        const command = isWindows ? commandToFindInPathWindows : commandToFindInPathUnix;
+        const command = isWindows ? commandWindowsNoop : commandUnixNoop;
 
         const opts: TaskConfiguration = createProcessTaskConfig('shell', command, []);
         const taskInfo: TaskInfo = await taskServer.run(opts, wsRoot);
@@ -180,7 +181,7 @@ describe('Task server / back-end', function () {
     });
 
     it('task can successfully execute command found in system path using a raw process', async function () {
-        const command = isWindows ? commandToFindInPathWindows : commandToFindInPathUnix;
+        const command = isWindows ? commandWindowsNoop : commandUnixNoop;
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('process', command, []), wsRoot);
 
         const p = checkSuccessfullProcessExit(taskInfo, taskWatcher);
@@ -188,7 +189,7 @@ describe('Task server / back-end', function () {
         await p;
     });
 
-    it('task using terminal process can be killed', async function () {
+    it('task using type "terminal" can be killed', async function () {
         // const command = isWindows ? command_absolute_path_long_running_windows : command_absolute_path_long_running;
         const taskInfo: TaskInfo = await taskServer.run(createTaskConfigTaskLongRunning('shell'), wsRoot);
 
@@ -196,12 +197,12 @@ describe('Task server / back-end', function () {
             taskWatcher.onTaskExit((event: TaskExitedEvent) => {
                 if (isWindows) {
                     if (event.taskId !== taskInfo.taskId || event.code === undefined) {
-                        reject();
+                        reject(new Error(JSON.stringify(event)));
                     }
                     resolve(event.code);
                 } else {
                     if (event.taskId !== taskInfo.taskId || event.signal === undefined) {
-                        reject();
+                        reject(new Error(JSON.stringify(event)));
                     }
                     resolve(event.signal);
                 }
@@ -227,10 +228,18 @@ describe('Task server / back-end', function () {
     it('task using type "process" can be killed', async function () {
         const taskInfo: TaskInfo = await taskServer.run(createTaskConfigTaskLongRunning('process'), wsRoot);
 
-        const p = new Promise<string>((resolve, reject) => {
+        const p = new Promise<string | number>((resolve, reject) => {
             taskWatcher.onTaskExit((event: TaskExitedEvent) => {
-                if (event.taskId !== taskInfo.taskId || event.signal === undefined) {
-                    reject();
+                if (isWindows) {
+                    if (event.taskId !== taskInfo.taskId || event.code === undefined) {
+                        reject(new Error(JSON.stringify(event)));
+                    }
+                    resolve(event.code);
+                } else {
+                    if (event.taskId !== taskInfo.taskId || event.signal === undefined) {
+                        reject(new Error(JSON.stringify(event)));
+                    }
+                    resolve(event.signal);
                 }
 
                 resolve(event.signal);
@@ -310,14 +319,14 @@ describe('Task server / back-end', function () {
                     if (runningTasksAll.length === 6) {
                         resolve();
                     } else {
-                        reject(`Error: unexpected total number of running tasks for all contexts:  expected: 6, actual: ${runningTasksCtx1.length}`);
+                        reject(new Error(`Error: unexpected total number of running tasks for all contexts:  expected: 6, actual: ${runningTasksCtx1.length}`));
                     }
                 } else {
-                    reject(`Error: unexpected number of running tasks for context 2: expected: 2, actual: ${runningTasksCtx1.length}`);
+                    reject(new Error(`Error: unexpected number of running tasks for context 2: expected: 2, actual: ${runningTasksCtx1.length}`));
                 }
 
             } else {
-                reject(`Error: unexpected number of running tasks for context 1: expected: 4, actual: ${runningTasksCtx1.length}`);
+                reject(new Error(`Error: unexpected number of running tasks for context 1: expected: 4, actual: ${runningTasksCtx1.length}`));
             }
         });
 
@@ -358,11 +367,11 @@ describe('Task server / back-end', function () {
                 if (numRunningTasksAfterKilled.length === 0) {
                     resolve();
                 } else {
-                    reject(`Error: remaining running tasks, after all killed: expected: 0, actual: ${numRunningTasksAfterKilled.length}`);
+                    reject(new Error(`Error: remaining running tasks, after all killed: expected: 0, actual: ${numRunningTasksAfterKilled.length}`));
                 }
 
             } else {
-                reject(`Error: unexpected number of running tasks: expected: ${numTasks}, actual: ${numRunningTasksAfterCreated.length}`);
+                reject(new Error(`Error: unexpected number of running tasks: expected: ${numTasks}, actual: ${numRunningTasksAfterCreated.length}`));
             }
         });
 
@@ -379,15 +388,15 @@ function createTaskConfig(taskType: string, command: string, args: string[]): Ta
         _scope: '/source/folder',
         command: command,
         args: args,
-        windows: {
-            command: 'cmd.exe',
-            args: [
-                '/c',
-                command
-                ,
-                (args[0] !== undefined) ? args[0] : ''
-            ]
-        },
+        // windows: {
+        //     command: 'cmd.exe',
+        //     args: [
+        //         '/c',
+        //         command
+        //         ,
+        //         (args[0] !== undefined) ? args[0] : ''
+        //     ]
+        // },
         cwd: wsRoot
     };
     return options;
@@ -401,15 +410,15 @@ function createProcessTaskConfig(processType: ProcessType, command: string, args
         _scope: '/source/folder',
         command: command,
         args: args,
-        windows: {
-            command: 'cmd.exe',
-            args: [
-                '/c',
-                command
-                ,
-                (args[0] !== undefined) ? args[0] : ''
-            ]
-        },
+        // windows: {
+        //     command: 'cmd.exe',
+        //     args: [
+        //         '/c',
+        //         command
+        //         ,
+        //         (args[0] !== undefined) ? args[0] : ''
+        //     ]
+        // },
         cwd: cwd
     };
     return options;
@@ -435,12 +444,16 @@ function createTaskConfigTaskLongRunning(processType: ProcessType): TaskConfigur
         command: commandLongRunning,
         args: [],
         windows: {
-            command: 'cmd.exe',
-            args: [
-                '/c',
-                commandLongRunningWindows
-            ]
+            command: FileUri.fsPath(wsRootUri.resolve(commandLongRunningWindows)),
+            args: [],
         }
+        // windows: {
+        //     command: 'cmd.exe',
+        //     args: [
+        //         '/c',
+        //         commandLongRunningWindows
+        //     ]
+        // }
     };
 }
 
